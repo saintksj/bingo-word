@@ -6,7 +6,7 @@
 <title>말빙고 - 진행 화면</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shared.css">
 <style>
   .stage{
@@ -17,24 +17,25 @@
   #wordCloud{ display:flex; flex-wrap:wrap; gap:14px; justify-content:center; align-content:center; }
   #wordCloudPlay{ display:flex; flex-wrap:wrap; gap:14px; justify-content:center; align-content:center; }
   .cloudWord{
-    font-family:'Do Hyeon',sans-serif; font-weight:400; font-size:clamp(20px,3.4vw,32px);
+    font-family:'Jua',sans-serif; font-weight:400; font-size:clamp(20px,3.4vw,32px);
     background:var(--warm-tint); color:var(--warm-strong); border-radius:20px; padding:10px 22px; line-height:1.2;
     cursor:default;
   }
   .cloudWord.callable{ cursor:pointer; }
   .cloudWord.calledOut{ background:var(--surface-2); color:var(--ink-soft); text-decoration:line-through; }
-  .empty-note{ color:var(--ink-soft); font-size:18px; text-align:center; }
-  #currentCallLabel{ text-align:center; color:var(--ink-soft); letter-spacing:.1em; text-transform:uppercase; font-size:13px; }
-  #currentCall{ font-family:'Do Hyeon',sans-serif; font-weight:400; text-align:center; font-size:clamp(36px,9vw,56px); color:var(--warm-strong); margin:6px 0 0; min-height:1.2em; }
+  .empty-note{ color:var(--ink-soft); font-size:18px; font-weight:500; text-align:center; }
+  #currentCallLabel{ text-align:center; color:var(--ink-soft); letter-spacing:.1em; text-transform:uppercase; font-size:14.5px; font-weight:700; }
+  #currentCall{ font-family:'Jua',sans-serif; font-weight:400; text-align:center; font-size:clamp(36px,9vw,56px); color:var(--warm-strong); margin:6px 0 0; min-height:1.2em; }
   .control-bar{ background:var(--surface-2); border:2px dashed var(--border); border-radius:16px; padding:14px 16px; margin-top:16px; display:flex; flex-direction:column; gap:10px; }
-  .stat-line{ font-size:13.5px; color:var(--ink-soft); text-align:center; margin-top:8px; }
+  .stat-line{ font-size:15px; font-weight:500; color:var(--ink-soft); text-align:center; margin-top:8px; }
   .stat-line b{ color:var(--ink); font-variant-numeric:tabular-nums; }
   #roster{ display:flex; flex-wrap:wrap; gap:8px; }
   .rosterChip{ background:var(--cool-tint); color:var(--ink); border-radius:999px; padding:6px 13px; font-size:14px; }
   .rosterChip.bingo{ background:var(--gold-tint); border:1.5px solid var(--gold); font-weight:700; }
   #winnerFeed{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
   .winnerLine{ background:var(--gold-tint); border:1px solid var(--gold); border-radius:12px; padding:8px 12px; font-size:14px; }
-  .note-box{ background:var(--cool-tint); border-radius:14px; padding:12px 16px; font-size:13.5px; color:var(--ink); margin-top:14px; }
+  .note-box{ background:var(--cool-tint); border-radius:14px; padding:14px 16px; font-size:14.5px; font-weight:500; color:var(--ink); margin-top:14px; }
+  .note-box p{ margin:0; }
 </style>
 </head>
 <body>
@@ -89,7 +90,13 @@
       </div>
     </div>
 
-    <p class="note-box">💡 학생들에게는 <b><span id="studentUrlHint">student.html</span></b> 링크를 전달해주세요. 낱말을 부르려면 위쪽 낱말을 <b>눌러주세요</b> — 자동으로 학생들 빙고판에 빨간 동그라미가 표시됩니다.</p>
+    <div class="note-box">
+      <p>💡 학생들에게는 아래 링크를 전달해주세요. 낱말을 부르려면 위쪽 낱말을 <b>눌러주세요</b> — 자동으로 학생들 빙고판에 빨간 동그라미가 표시됩니다.</p>
+      <div class="link-row">
+        <input type="text" id="studentUrlHint" readonly>
+        <button class="btn-cool" id="copyLinkBtn" type="button">📋 링크 복사</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -101,7 +108,11 @@
     const db = firebase.database();
     const gameRef = db.ref('game');
 
-    document.getElementById('studentUrlHint').textContent = location.origin + location.pathname.replace(/index\.html$/,'') + 'student.html';
+    const studentUrl = location.origin + location.pathname.replace(/index\.html$/,'') + 'student.html';
+    const studentUrlInput = document.getElementById('studentUrlHint');
+    studentUrlInput.value = studentUrl;
+    studentUrlInput.addEventListener('click', function(){ this.select(); });
+    studentUrlInput.addEventListener('focus', function(){ this.select(); });
 
     function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -264,6 +275,29 @@
       });
       announced.clear();
       document.getElementById('winnerFeed').innerHTML = '';
+    });
+
+    document.getElementById('copyLinkBtn').addEventListener('click', function(){
+      const btn = this;
+      const original = btn.textContent;
+      function showResult(ok){
+        btn.textContent = ok ? '✅ 복사됨!' : '복사 실패 — 직접 선택해 복사해주세요';
+        setTimeout(function(){ btn.textContent = original; }, 1800);
+      }
+      function fallbackCopy(){
+        studentUrlInput.select();
+        studentUrlInput.setSelectionRange(0, 99999);
+        try {
+          showResult(document.execCommand('copy'));
+        } catch (e) {
+          showResult(false);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(studentUrl).then(function(){ showResult(true); }).catch(fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
     });
 
     document.getElementById('resetBtn').addEventListener('click', function(){
