@@ -83,6 +83,7 @@
       <div class="control-row">
         <button class="btn-warm" id="toBuildingBtn" type="button">➡ 빙고판 만들기 시작</button>
         <button class="btn-warm" id="toPlayingBtn" type="button" hidden>▶ 빙고 게임 시작</button>
+        <button class="btn-ghost" id="playAgainBtn" type="button" hidden>🔁 같은 낱말로 다시하기</button>
         <button class="btn-danger" id="resetBtn" type="button">🔄 전체 초기화</button>
       </div>
     </div>
@@ -148,6 +149,7 @@
       document.getElementById('winLinesRow').hidden = playing;
       document.getElementById('toBuildingBtn').hidden = !collecting;
       document.getElementById('toPlayingBtn').hidden = !building;
+      document.getElementById('playAgainBtn').hidden = collecting;
 
       const cloudHtml = wordList.length
         ? wordList.map(w => '<span class="cloudWord">' + esc(w.text) + '</span>').join('')
@@ -237,6 +239,30 @@
       const tag = e.target.closest('.cloudWord');
       if (!tag || tag.classList.contains('calledOut')) return;
       gameRef.child('words').child(tag.dataset.id).update({ called: true, calledAt: firebase.database.ServerValue.TIMESTAMP });
+    });
+
+    document.getElementById('playAgainBtn').addEventListener('click', function(){
+      if (!confirm('같은 낱말은 그대로 두고, 학생들의 빙고판과 부른 낱말 기록만 초기화해서 다시 할까요? (참가자는 그대로 유지돼요)')) return;
+      gameRef.once('value', function(snap){
+        const v = snap.val() || {};
+        const words = v.words || {};
+        const resetWords = {};
+        Object.keys(words).forEach(function(k){
+          resetWords[k] = { text: words[k].text, called: false, calledAt: null };
+        });
+        const students = v.students || {};
+        const resetStudents = {};
+        Object.keys(students).forEach(function(k){
+          const s = students[k] || {};
+          const size = s.size || v.size || 3;
+          const blank = {};
+          for (let i=0;i<size*size;i++) blank[String(i)] = '';
+          resetStudents[k] = { name: s.name || '', size: size, cells: blank, bingo: false, bingoAt: null };
+        });
+        gameRef.update({ phase: 'building', words: resetWords, students: resetStudents });
+      });
+      announced.clear();
+      document.getElementById('winnerFeed').innerHTML = '';
     });
 
     document.getElementById('resetBtn').addEventListener('click', function(){

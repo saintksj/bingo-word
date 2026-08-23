@@ -86,6 +86,7 @@
 
     let game = { topic:'', size:3, winLines:1, phase:'collecting', words:{} };
     let me = null;
+    let armedCell = null;
 
     function checkLines(cellsArr, size, calledTexts){
       const ok = i => { const w = cellsArr[i]; return !!w && calledTexts.has(w); };
@@ -116,6 +117,7 @@
       const cellsArr = Array.from({length:size*size}, (_,i) => cellsObj[String(i)] || '');
 
       const phase = game.phase;
+      if (phase !== 'building') armedCell = null;
       document.getElementById('waitingCard').hidden = phase !== 'collecting';
       document.getElementById('buildCard').hidden = phase !== 'building';
       document.getElementById('playExtra').hidden = phase !== 'playing';
@@ -130,14 +132,18 @@
           '<span class="wordTag' + (usedWords.has(w.text) ? ' used' : '') + '" data-word="' + esc(w.text) + '">' + esc(w.text) + '</span>'
         ).join('');
         const filledCount = cellsArr.filter(Boolean).length;
-        document.getElementById('buildHint').textContent = '낱말을 눌러 빙고판을 채워보세요. (' + filledCount + '/' + (size*size) + ')';
+        const hintText = armedCell !== null
+          ? (cellsArr[armedCell] ? '이 칸에 넣을 낱말을 눌러주세요. (같은 칸을 다시 누르면 취소)' : '선택한 빈 칸에 넣을 낱말을 눌러주세요.')
+          : '빙고칸을 먼저 누르면 그 칸에 넣을 낱말을 고를 수 있어요. 칸 두 개를 차례로 누르면 위치가 서로 바뀌어요.';
+        document.getElementById('buildHint').textContent = hintText + ' (' + filledCount + '/' + (size*size) + ')';
       }
 
       document.getElementById('boardTitle').textContent = phase === 'playing' ? '내 빙고판 (부른 낱말은 자동으로 표시돼요)' : '내 빙고판';
       document.getElementById('boardWrap').innerHTML = '<div class="board" data-size="' + size + '">' +
-        cellsArr.map(w => {
+        cellsArr.map((w, i) => {
           const cls = ['cell']; if(w) cls.push('filled'); if(w && calledTexts.has(w)) cls.push('marked');
-          return '<div class="' + cls.join(' ') + '">' + esc(w) + '</div>';
+          if (phase === 'building' && armedCell === i) cls.push('armed');
+          return '<div class="' + cls.join(' ') + '" data-index="' + i + '">' + esc(w) + '</div>';
         }).join('') + '</div>';
 
       if (phase === 'playing'){
@@ -188,13 +194,42 @@
       const cellsArr = Array.from({length:size*size}, (_,i) => cellsObj[String(i)] || '');
       const word = tag.dataset.word;
       const usedIndex = cellsArr.findIndex(w => w === word);
+
+      if (armedCell !== null){
+        const updates = {};
+        if (usedIndex >= 0 && usedIndex !== armedCell) updates[String(usedIndex)] = '';
+        updates[String(armedCell)] = word;
+        myRef.child('cells').update(updates);
+        armedCell = null;
+        return;
+      }
+
       if (usedIndex >= 0){
         myRef.child('cells').child(String(usedIndex)).set('');
       } else {
         const emptyIndex = cellsArr.findIndex(w => !w);
-        if (emptyIndex < 0){ alert('빙고판이 가득 찼어요! 다른 낱말을 빼고 골라보세요.'); return; }
+        if (emptyIndex < 0){ alert('빙고판이 가득 찼어요! 빙고칸을 눌러 바꿀 위치를 먼저 골라보세요.'); return; }
         myRef.child('cells').child(String(emptyIndex)).set(word);
       }
+    });
+
+    document.getElementById('boardWrap').addEventListener('click', function(e){
+      const cellEl = e.target.closest('.cell');
+      if (!cellEl || !me || game.phase !== 'building') return;
+      const idx = Number(cellEl.dataset.index);
+
+      if (armedCell === null){
+        armedCell = idx;
+      } else if (armedCell === idx){
+        armedCell = null;
+      } else {
+        const cellsObj = me.cells || {};
+        const a = cellsObj[String(armedCell)] || '';
+        const b = cellsObj[String(idx)] || '';
+        myRef.child('cells').update({ [String(armedCell)]: b, [String(idx)]: a });
+        armedCell = null;
+      }
+      render();
     });
   })();
   </script>
