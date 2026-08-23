@@ -36,10 +36,24 @@
   .winnerLine{ background:var(--gold-tint); border:1px solid var(--gold); border-radius:12px; padding:8px 12px; font-size:14px; }
   .note-box{ background:var(--cool-tint); border-radius:14px; padding:14px 16px; font-size:14.5px; font-weight:500; color:var(--ink); margin-top:14px; }
   .note-box p{ margin:0; }
+  #pinGateWrap{ max-width:360px; margin:70px auto; padding:0 16px; }
+  #pinGateWrap .card{ text-align:center; }
+  #pinGateWrap input{ width:100%; margin-bottom:12px; text-align:center; letter-spacing:.2em; font-size:20px; }
+  #pinGateWrap button{ width:100%; padding:12px; font-size:16px; }
+  #pinError{ color:var(--danger); font-size:14px; font-weight:700; margin-top:10px; }
 </style>
 </head>
 <body>
-  <div class="wrap">
+  <div id="pinGateWrap">
+    <div class="card">
+      <h2>🔒 선생님 확인</h2>
+      <p class="hint">진행 화면에 들어가려면 비밀번호를 입력해주세요.</p>
+      <input type="password" id="pinInput" inputmode="numeric" placeholder="비밀번호" maxlength="10">
+      <button class="btn-cool" id="pinSubmitBtn" type="button">입장하기</button>
+      <p id="pinError" hidden>비밀번호가 올바르지 않아요.</p>
+    </div>
+  </div>
+  <div class="wrap" id="mainWrap" hidden>
     <p class="eyebrow">진행 화면 · 프로젝터용</p>
     <p class="topicDisplay" id="topicDisplay">오늘의 주제를 아래에 입력해보세요</p>
 
@@ -104,6 +118,33 @@
   <script src="firebase-config.js"></script>
   <script>
   (function(){
+    // 선생님 화면 비밀번호 — 원하시는 숫자로 바꾸고 싶으면 이 값만 수정하시면 돼요.
+    const TEACHER_PIN = '4312';
+
+    function unlockTeacher(){
+      document.getElementById('pinGateWrap').hidden = true;
+      document.getElementById('mainWrap').hidden = false;
+    }
+    try {
+      if (sessionStorage.getItem('wb_teacher_unlocked') === 'yes') unlockTeacher();
+    } catch(e){}
+
+    document.getElementById('pinSubmitBtn').addEventListener('click', function(){
+      const val = document.getElementById('pinInput').value.trim();
+      if (val === TEACHER_PIN){
+        try { sessionStorage.setItem('wb_teacher_unlocked', 'yes'); } catch(e){}
+        unlockTeacher();
+      } else {
+        document.getElementById('pinError').hidden = false;
+        const input = document.getElementById('pinInput');
+        input.value = '';
+        input.focus();
+      }
+    });
+    document.getElementById('pinInput').addEventListener('keydown', function(e){
+      if (e.key === 'Enter') document.getElementById('pinSubmitBtn').click();
+    });
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const gameRef = db.ref('game');
