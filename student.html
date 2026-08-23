@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>말빙고 - 내 빙고판</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+  #studentWordPool{ display:flex; flex-wrap:wrap; gap:9px; min-height:38px; }
+  .wordTag{ cursor:pointer; }
+  .wordTag.used{ background:var(--warm); color:#fff; }
+  .wordTag.disabled{ cursor:default; opacity:.7; }
+  #currentCallWrap{ text-align:center; padding:6px 0 4px; }
+  #currentCallLabel2{ text-align:center; color:var(--ink-soft); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
+  #currentCall2{ font-family:'Do Hyeon',sans-serif; font-weight:400; font-size:clamp(28px,8vw,44px); color:var(--warm-strong); min-height:1.2em; text-align:center; }
+  #bingoBanner{ display:block; margin:16px auto 4px; font-size:20px; padding:15px 36px; background:var(--gold); color:#3A2E00; border-radius:999px; box-shadow:0 8px 20px rgba(242,183,5,.4); text-align:center; font-family:'Do Hyeon',sans-serif; }
+  @media (prefers-reduced-motion:no-preference){ #bingoBanner:not([hidden]){ animation:pop .6s ease; } }
+  @keyframes pop{ 0%{transform:scale(.8);} 60%{transform:scale(1.06);} 100%{transform:scale(1);} }
+  .join-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .join-row input{ flex:1; min-width:160px; }
+  .waiting{ text-align:center; color:var(--ink-soft); padding:20px 0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="eyebrow" id="topicEyebrow">오늘의 주제</p>
+    <p class="topicDisplay" id="topicDisplay">선생님 화면을 함께 봐주세요</p>
+
+    <div class="card" id="joinCard">
+      <h2>입장하기</h2>
+      <p class="hint">별명을 적고 들어와 주세요.</p>
+      <div class="join-row">
+        <input type="text" id="nameInput" placeholder="별명을 입력하세요" maxlength="12">
+        <button class="btn-cool" id="joinBtn" type="button">입장하기</button>
+      </div>
+    </div>
+
+    <div id="gameArea" hidden>
+      <div class="card" id="waitingCard" hidden>
+        <p class="waiting">선생님이 낱말을 모으고 있어요. 잠시만 기다려주세요! ⏳</p>
+        <div id="watchPool" style="display:flex;flex-wrap:wrap;gap:9px;justify-content:center;"></div>
+      </div>
+
+      <div class="card" id="buildCard" hidden>
+        <h2>낱말을 눌러 빙고판을 채워요</h2>
+        <p class="hint" id="buildHint">한 번 더 누르면 빼낼 수 있어요.</p>
+        <div id="studentWordPool"></div>
+      </div>
+
+      <div class="card">
+        <h2 id="boardTitle">내 빙고판</h2>
+        <div id="boardWrap"></div>
+        <div id="playExtra" hidden>
+          <div id="currentCallWrap">
+            <div id="currentCallLabel2">방금 부른 낱말</div>
+            <div id="currentCall2">-</div>
+          </div>
+          <p id="bingoBanner" hidden>🎉 빙고! 선생님께 외쳐보세요!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script>
+  (function(){
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const gameRef = db.ref('game');
+
+    function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function ensureId(){
+      try{
+        let id = localStorage.getItem('wb_student_id');
+        if(!id){ id = 'p' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); localStorage.setItem('wb_student_id', id); }
+        return id;
+      }catch(e){ return 'p' + Math.random().toString(36).slice(2,10); }
+    }
+    const MY_ID = ensureId();
+    const myRef = gameRef.child('students').child(MY_ID);
+
+    let game = { topic:'', size:3, winLines:1, phase:'collecting', words:{} };
+    let me = null;
+
+    function checkLines(cellsArr, size, calledTexts){
+      const ok = i => { const w = cellsArr[i]; return !!w && calledTexts.has(w); };
+      let lines = 0;
+      for (let r=0;r<size;r++){
+        let row=true, col=true;
+        for (let c=0;c<size;c++){ if(!ok(r*size+c)) row=false; if(!ok(c*size+r)) col=false; }
+        if(row) lines++; if(col) lines++;
+      }
+      let d1=true, d2=true;
+      for (let i=0;i<size;i++){ if(!ok(i*size+i)) d1=false; if(!ok(i*size+(size-1-i))) d2=false; }
+      if(d1) lines++; if(d2) lines++;
+      return lines;
+    }
+
+    function render(){
+      document.getElementById('topicDisplay').textContent = game.topic || '선생님 화면을 함께 봐주세요';
+
+      const joined = !!(me && me.name);
+      document.getElementById('joinCard').hidden = joined;
+      document.getElementById('gameArea').hidden = !joined;
+      if (!joined) return;
+
+      const wordList = Object.keys(game.words||{}).map(k => ({ id:k, ...game.words[k] }));
+      const calledTexts = new Set(wordList.filter(w=>w.called).map(w=>w.text));
+      const size = me.size || game.size || 3;
+      const cellsObj = me.cells || {};
+      const cellsArr = Array.from({length:size*size}, (_,i) => cellsObj[String(i)] || '');
+
+      const phase = game.phase;
+      document.getElementById('waitingCard').hidden = phase !== 'collecting';
+      document.getElementById('buildCard').hidden = phase !== 'building';
+      document.getElementById('playExtra').hidden = phase !== 'playing';
+
+      if (phase === 'collecting'){
+        document.getElementById('watchPool').innerHTML = wordList.map(w => '<span class="wordTag disabled">' + esc(w.text) + '</span>').join('');
+      }
+
+      if (phase === 'building'){
+        const usedWords = new Set(cellsArr.filter(Boolean));
+        document.getElementById('studentWordPool').innerHTML = wordList.map(w =>
+          '<span class="wordTag' + (usedWords.has(w.text) ? ' used' : '') + '" data-word="' + esc(w.text) + '">' + esc(w.text) + '</span>'
+        ).join('');
+        const filledCount = cellsArr.filter(Boolean).length;
+        document.getElementById('buildHint').textContent = '낱말을 눌러 빙고판을 채워보세요. (' + filledCount + '/' + (size*size) + ')';
+      }
+
+      document.getElementById('boardTitle').textContent = phase === 'playing' ? '내 빙고판 (부른 낱말은 자동으로 표시돼요)' : '내 빙고판';
+      document.getElementById('boardWrap').innerHTML = '<div class="board" data-size="' + size + '">' +
+        cellsArr.map(w => {
+          const cls = ['cell']; if(w) cls.push('filled'); if(w && calledTexts.has(w)) cls.push('marked');
+          return '<div class="' + cls.join(' ') + '">' + esc(w) + '</div>';
+        }).join('') + '</div>';
+
+      if (phase === 'playing'){
+        const lastCalled = wordList.filter(w=>w.called).sort((a,b)=>(b.calledAt||0)-(a.calledAt||0))[0];
+        document.getElementById('currentCall2').textContent = lastCalled ? lastCalled.text : '-';
+
+        const lines = checkLines(cellsArr, size, calledTexts);
+        const need = game.winLines || 1;
+        document.getElementById('bingoBanner').hidden = lines < need;
+        if (lines >= need && !me.bingo){
+          myRef.update({ bingo:true, bingoAt: firebase.database.ServerValue.TIMESTAMP });
+        }
+      }
+    }
+
+    gameRef.on('value', snap => {
+      const v = snap.val() || {};
+      game = { topic:v.topic||'', size:v.size||3, winLines:v.winLines||1, phase:v.phase||'collecting', words:v.words||{} };
+      render();
+    });
+    myRef.on('value', snap => {
+      me = snap.val();
+      render();
+    });
+
+    document.getElementById('joinBtn').addEventListener('click', function(){
+      const input = document.getElementById('nameInput');
+      const name = input.value.trim().slice(0,12);
+      if (!name) { input.focus(); return; }
+      const size = game.size || 3;
+      const initial = { name: name, size: size };
+      myRef.update(initial).then(() => {
+        myRef.child('cells').once('value', s => {
+          if (!s.exists()){
+            const blank = {};
+            for (let i=0;i<size*size;i++) blank[String(i)] = '';
+            myRef.child('cells').set(blank);
+          }
+        });
+      });
+    });
+
+    document.getElementById('studentWordPool').addEventListener('click', function(e){
+      const tag = e.target.closest('.wordTag');
+      if (!tag || !me) return;
+      const size = me.size || game.size || 3;
+      const cellsObj = me.cells || {};
+      const cellsArr = Array.from({length:size*size}, (_,i) => cellsObj[String(i)] || '');
+      const word = tag.dataset.word;
+      const usedIndex = cellsArr.findIndex(w => w === word);
+      if (usedIndex >= 0){
+        myRef.child('cells').child(String(usedIndex)).set('');
+      } else {
+        const emptyIndex = cellsArr.findIndex(w => !w);
+        if (emptyIndex < 0){ alert('빙고판이 가득 찼어요! 다른 낱말을 빼고 골라보세요.'); return; }
+        myRef.child('cells').child(String(emptyIndex)).set(word);
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
